@@ -1,0 +1,7 @@
+ xpack.security.audit.enabled: true
+ xpack.security.audit.outputs: [logfile]
+ 
+ xpack.security.audit.logfile.events.ignore_filters:
+   example1:
+     users: ["kibana", "admin_user", "elastic"]
+

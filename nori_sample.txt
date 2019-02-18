@@ -1,0 +1,127 @@
+DELETE nori_sample
+
+PUT nori_sample
+{
+  "settings": {
+    "index": {
+      "analysis": {
+        "tokenizer": {
+          "nori_user_dict": {
+            "type": "nori_tokenizer",
+            "decompound_mode": "mixed",
+            "user_dictionary": "userdict_ko.txt"
+          }
+        },
+        "analyzer": {
+          "my_analyzer": {
+            "type": "custom",
+            "tokenizer": "nori_user_dict",
+            "filter": ["unnoun_filter","lowercase"],            
+            "fielddata": true
+          }
+        },
+        "filter": {
+          "unnoun_filter": {
+            "type": "nori_part_of_speech",
+            "stoptags": ["E", "IC", "J", "MAG", "MM", "SP", "SSC", "SSO", "SC","SE", "XPN", "XSA", "XSN", "XSV", "UNA", "NA", "VSV", "VA", "E"]
+          }
+        }        
+      }
+    }
+  },
+  "mappings": {
+    "_doc" : {
+      "properties": {
+        "msg": {
+          "type": "text",
+          "analyzer": "my_analyzer",
+          "fielddata": true
+        }
+      }
+    }
+  }
+}
+
+POST /nori_sample/_doc
+{
+  "msg" : "일래스틱서치 명사의 별도적재 예제입니다."
+}
+
+GET /nori_sample/_doc/_search
+{
+ "query": {
+   "bool": {
+     "must": [
+       {
+         "match": {
+            "msg": "별도"
+          }
+       }
+
+    ]
+   }
+ }
+}
+
+GET nori_sample/_analyze
+{
+  "analyzer": "my_analyzer",
+  "text": "일래스틱서치 명사의 별도적재 예제입니다."      
+}
+
+GET /nori_sample/_doc/_search
+{
+  "_source": "*",
+  "query": {"match_all": {}},
+  "script_fields": {
+    "searchkeyword": {
+      "script": {
+        "lang": "painless",
+        "source": "doc[params.field].values",
+        "params": {"field": "msg"}
+      }
+    }
+  }
+}
+
+
+logstash.conf
+input {
+    elasticsearch {
+        host => "127.0.0.1:9200"
+        index => "nori_sample-{now/d-1d{YYYY.MM.dd}}"
+        user => "elastic"
+        password => "changeme"
+        query => '{"_source": "*", "query": {"match_all":{}}, "script_fields": {"searchkeyword": {"script": {"lang":"painless"
+,"source":"doc[params.field].values", "params": "ratogtxt.korean"}} }}}'
+        docinfo => true
+        docinfo_field => ["fields", "_index", "_type", "_id"]
+        docinfo_target => "meta"
+        schedule => "01 01 * * *"
+    }
+}
+
+filter {
+    mutate {
+        copy => {"[meta][fileds][searchkeyword]" => "searchkeyword"}
+        copy => {"[meta][fields][terms]" => "terms"}
+        copy => {"[meta][_index]" => "[@metadata][_index]"}
+        copy => {"[meta][_type]" => "[@metadata][_type]"}
+        copy => {"[meta][_id]" => "[@metadata][_id]"}
+        remove_field => ["meta"]
+    }
+}
+
+output {
+    stdout {}
+    elasticsearch {
+        hosts => "127.0.0.1:9200"
+        index => "nori_sample-{now/d-1d{YYYY.MM.dd}}"
+        user => "elastic"
+        password => "changeme"
+        document_id => "%{[@metadata][_id]}"
+        doc_as_upsert => true
+        action => "update"
+    }
+}
+
